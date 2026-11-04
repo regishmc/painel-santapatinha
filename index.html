@@ -639,10 +639,6 @@ h1, h2, h3, h4, p { margin: 0; }
     <p class="subtitle" id="period-subtitle"></p>
   </div>
 
-  <div class="aviso">
-    <strong>Isto não é um fechamento homologado.</strong>
-    <span id="aviso-text"></span>
-  </div>
 
   <div class="card filters-bar">
     <div class="filter-group filter-period">
@@ -1838,7 +1834,6 @@ function initDashboard(DATA) {
       "Mês de referência (KPIs e Sankey): " + monthLabel(currentKey) +
       (currentTree.audited_in_planilha ? " (auditado na planilha)." : " (ainda não auditado na planilha original).") +
       " Fontes: PagBank + Stone (conta corrente + rendimentos de investimento).";
-    document.getElementById("aviso-text").textContent = DATA.generated_note;
     document.getElementById("trend-subtitle").textContent =
       monthLabel(monthsToShow[0]) + " a " + monthLabel(monthsToShow[monthsToShow.length - 1]) + ", combinado (PagBank + Stone).";
     document.getElementById("table-toolbar-note").textContent =
