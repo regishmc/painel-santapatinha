@@ -286,6 +286,41 @@ h1, h2, h3, h4, p { margin: 0; }
 .banco-tag { font-weight: 700; }
 .banco-tag.stone { color: #0d5c33; }
 .banco-tag.pagbank { color: #8a6d00; }
+
+/* Reclassificar lancamento (so no painel web; senha conferida no servidor). */
+.reclass-btn {
+  margin-left: 6px; padding: 1px 8px; font-size: 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--accent-dark); background: var(--accent-tint); color: #6b4e00; font-family: inherit;
+}
+.reclass-btn:hover { background: var(--accent); color: #1a1a1a; }
+.reclass-overlay {
+  position: fixed; inset: 0; z-index: 9000; background: rgba(20, 20, 20, .45);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.reclass-modal {
+  background: var(--surface); width: 100%; max-width: 460px; border-radius: 12px; padding: 20px 20px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.2); max-height: calc(100vh - 32px); overflow: auto;
+}
+.reclass-modal h3 { margin: 0 0 10px; font-size: 17px; }
+.reclass-info { font-size: 13px; line-height: 1.5; color: var(--text-secondary); background: var(--surface-alt);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; overflow-wrap: anywhere; }
+.reclass-modal label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 8px 0 4px; }
+.reclass-modal select, .reclass-modal input {
+  width: 100%; font-size: 15px; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-family: inherit; background: #fff;
+}
+.reclass-msg { min-height: 18px; font-size: 13px; margin: 10px 0 4px; color: var(--red); }
+.reclass-msg.ok { color: var(--green); }
+.reclass-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.reclass-actions button { padding: 9px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; font-family: inherit; }
+.reclass-cancelar { border: 1px solid var(--border); background: var(--surface); }
+.reclass-salvar { border: 0; background: var(--accent-dark); color: #fff; font-weight: 600; }
+.reclass-salvar[disabled] { opacity: .6; cursor: default; }
+.reclass-nota { font-size: 11.5px; color: var(--text-muted); margin: 10px 0 0; line-height: 1.4; }
+
+/* Dias de funcionamento (ter–sab) e receita por dia. */
+.dias-card { margin-bottom: 20px; }
+.dias-table td, .dias-table th { white-space: nowrap; }
+.dias-nota { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
 .duplicate-tag {
   font-size: 10px; color: var(--text-muted); background: #eee;
   border-radius: 999px; padding: 1px 6px; margin-left: 6px;
@@ -592,7 +627,8 @@ h1, h2, h3, h4, p { margin: 0; }
     <option value="view-fase2">Fase 2 - Relatório Junho.26</option>
     <option value="view-fase3">Fase 3 - Relatório Julho.26</option>
     <option value="view-fase4">Fase 4 - Relatório Agosto.26</option>
-    <option value="view-fase5" selected>Fase 5 - Relatório Setembro.26</option>
+    <option value="view-fase5">Fase 5 - Relatório Setembro.26</option>
+    <option value="view-fase6" selected>Fase 6 - Relatório Outubro.26</option>
   </select>
 </div>
 
@@ -689,6 +725,13 @@ h1, h2, h3, h4, p { margin: 0; }
     </div>
   </div>
 
+  <div class="card chart-card dias-card" id="dias-card">
+    <h3>Receita por dia de funcionamento</h3>
+    <p class="subtitle">A Santa Patinha abre de terça a sábado: dias de funcionamento = terças a sábados do mês, sem feriados nacionais. Período selecionado, sem filtros.</p>
+    <div class="table-scroll-x"><table class="dre-table dias-table" id="dias-table"></table></div>
+    <p class="dias-nota" id="dias-nota"></p>
+  </div>
+
   <div class="card chart-card projecao-card hidden" id="projecao-card">
     <h3>Projeção simples de resultado <span class="projecao-badge">NOVO</span></h3>
     <p class="subtitle" id="projecao-subtitle"></p>
@@ -740,6 +783,8 @@ h1, h2, h3, h4, p { margin: 0; }
 <div class="main hidden report-view" id="view-fase4" data-fase="fase4"><div class="report-loading">Carregando relatório…</div></div>
 
 <div class="main hidden report-view" id="view-fase5" data-fase="fase5"><div class="report-loading">Carregando relatório…</div></div>
+
+<div class="main hidden report-view" id="view-fase6" data-fase="fase6"><div class="report-loading">Carregando relatório…</div></div>
 
 <script>
 (function () {
@@ -817,6 +862,15 @@ function initDashboard(DATA) {
 
   var GROUP_ORDER = DATA.taxonomy.group_order;
   var CLASSIFICACAO_ORDER = DATA.taxonomy.classificacao_order;
+
+  function escHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  // Linhas da DRE que podem receber um lancamento (vem da API: so grupos de despesa).
+  var reclassOpcoes = DATA.reclass_opcoes || [];
+  var reclassTx = {}; // linha do Extrato -> lancamento + onde esta hoje (preenchido pela tabela)
 
   var GROUP_COLORS = {
     "Receitas": { node: "#1a73c7", link: "#a9cff0" },
@@ -1422,8 +1476,14 @@ function initDashboard(DATA) {
       var prev = vals[vals.length - 2], curr = vals[vals.length - 1];
       var delta = curr - prev;
       var pct = prev !== 0 ? (delta / Math.abs(prev) * 100) : null;
+      // Cor = bom/ruim para o resultado (custo que diminui e' verde). Seta = direcao do VALOR
+      // que a pessoa le na tabela: custo de R$ 500 para R$ 400 "caiu" (▼ verde), nao "subiu"
+      // (pedido da Fase 5: as setas de custo/freelancer estavam ao contrario).
       var cls = delta > 0 ? "good" : delta < 0 ? "bad" : "";
-      var pctText = pct === null ? "—" : (pct > 0 ? "▲" : pct < 0 ? "▼" : "") + fmtPct(Math.abs(pct));
+      var ehCusto = prev <= 0 && curr <= 0;
+      var a = ehCusto ? Math.abs(curr) : curr, b = ehCusto ? Math.abs(prev) : prev;
+      var seta = a > b ? "▲" : a < b ? "▼" : "";
+      var pctText = pct === null ? "—" : seta + fmtPct(Math.abs(pct));
       return '<td class="num col-delta ' + cls + '">' + fmtBRL(delta) + '</td><td class="num col-delta ' + cls + '">' + pctText + "</td>";
     }
 
@@ -1529,7 +1589,15 @@ function initDashboard(DATA) {
             if (!items.length) return "";
             return "<strong>" + monthLabel(m) + ":</strong><br>" + items.map(function (it) {
               var bancoTag = it.banco ? ' <span class="banco-tag ' + it.banco + '">[' + it.banco.toUpperCase() + "]</span>" : "";
-              return it.settled_on + bancoTag + " — " + it.description_raw + " — " + fmtBRL(it.amount_minor);
+              // Reclassificar: so no painel web (login + senha no servidor), so linhas do Extrato
+              // (tem "row"; itens do cartao nao tem) e so despesas.
+              var podeReclass = window.__reclassificarWeb && it.row && it.amount_minor < 0 && reclassOpcoes.length;
+              var reclassBtn = "";
+              if (podeReclass) {
+                reclassTx[it.row] = { tx: it, grupo: group, classificacao: classificacao, linha: linhaDre };
+                reclassBtn = ' <button class="reclass-btn" type="button" data-row="' + it.row + '" title="Mudar a classificação deste lançamento">✎ classificar</button>';
+              }
+              return it.settled_on + bancoTag + " — " + escHtml(it.description_raw) + " — " + fmtBRL(it.amount_minor) + reclassBtn;
             }).join("<br>");
           }).filter(Boolean).join("<hr>");
 
@@ -1611,6 +1679,12 @@ function initDashboard(DATA) {
         openCommentPopover(btn, btn.dataset.path, btn.dataset.label);
       });
     });
+    table.querySelectorAll(".reclass-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        abrirReclass(parseInt(btn.dataset.row, 10));
+      });
+    });
     table.querySelectorAll(".cartao-link").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -1622,6 +1696,131 @@ function initDashboard(DATA) {
 
     document.getElementById("table-summary").textContent =
       "Totais idênticos à aba \"DRE Horizontal\" da planilha (grupos, classificações e linhas).";
+  }
+
+  // --- Reclassificar lancamento (pedido da cliente na Fase 5/6) ---
+  // A senha NAO fica na pagina: vai junto no pedido e e' conferida no servidor (dados_project).
+  function abrirReclass(row) {
+    var info = reclassTx[row];
+    if (!info || !window.__reclassificarWeb) return;
+    var ov = document.getElementById("reclass-overlay");
+    if (!ov) {
+      document.body.insertAdjacentHTML("beforeend",
+        '<div class="reclass-overlay hidden" id="reclass-overlay"><div class="reclass-modal" role="dialog" aria-modal="true" aria-labelledby="reclass-titulo">' +
+        '<h3 id="reclass-titulo">Classificar lançamento</h3>' +
+        '<div class="reclass-info" id="reclass-info"></div>' +
+        '<label for="reclass-select">Nova linha da DRE</label><select id="reclass-select"></select>' +
+        '<label for="reclass-senha">Senha</label><input id="reclass-senha" type="password" autocomplete="off" autocapitalize="off">' +
+        '<p class="reclass-msg" id="reclass-msg" role="status"></p>' +
+        '<div class="reclass-actions"><button type="button" class="reclass-cancelar" id="reclass-cancelar">Cancelar</button>' +
+        '<button type="button" class="reclass-salvar" id="reclass-salvar">Salvar</button></div>' +
+        '<p class="reclass-nota">A mudança é gravada na planilha (aba Extrato) e registrada na aba Auditoria. ' +
+        'Só aparecem linhas que já existem na DRE.</p></div></div>');
+      ov = document.getElementById("reclass-overlay");
+      ov.addEventListener("click", function (e) { if (e.target === ov) ov.classList.add("hidden"); });
+      document.getElementById("reclass-cancelar").onclick = function () { ov.classList.add("hidden"); };
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !ov.classList.contains("hidden")) ov.classList.add("hidden");
+      });
+      var porGrupo = {}, ordem = [];
+      reclassOpcoes.forEach(function (o, i) {
+        var rotulo = o.grupo === o.classificacao ? o.grupo : o.grupo + " › " + o.classificacao;
+        if (!porGrupo[rotulo]) { porGrupo[rotulo] = []; ordem.push(rotulo); }
+        porGrupo[rotulo].push('<option value="' + i + '">' + escHtml(o.linha) + "</option>");
+      });
+      document.getElementById("reclass-select").innerHTML = ordem.map(function (g) {
+        return '<optgroup label="' + escHtml(g) + '">' + porGrupo[g].join("") + "</optgroup>";
+      }).join("");
+    }
+    var tx = info.tx;
+    var sel = document.getElementById("reclass-select");
+    var senha = document.getElementById("reclass-senha");
+    var msgEl = document.getElementById("reclass-msg");
+    var btn = document.getElementById("reclass-salvar");
+    function msg(t, ok) { msgEl.textContent = t; msgEl.classList.toggle("ok", !!ok); }
+    document.getElementById("reclass-info").innerHTML =
+      "<b>" + tx.settled_on.split("-").reverse().join("/") + "</b> — " + escHtml(tx.description_raw) + " — <b>" + fmtBRL(tx.amount_minor) + "</b>" +
+      "<br>Hoje em: " + escHtml(info.grupo === info.classificacao ? info.grupo : info.grupo + " › " + info.classificacao) + " › <b>" + escHtml(info.linha) + "</b>";
+    var atual = -1;
+    reclassOpcoes.forEach(function (o, i) { if (o.classificacao === info.classificacao && o.linha === info.linha) atual = i; });
+    sel.value = String(atual >= 0 ? atual : 0);
+    senha.value = "";
+    msg("");
+    btn.disabled = false;
+    btn.textContent = "Salvar";
+    btn.onclick = function () {
+      var o = reclassOpcoes[parseInt(sel.value, 10)];
+      if (!o) return;
+      if (o.classificacao === info.classificacao && o.linha === info.linha) { msg("Escolha uma linha diferente da atual."); return; }
+      if (!senha.value) { msg("Digite a senha."); senha.focus(); return; }
+      btn.disabled = true;
+      btn.textContent = "Salvando…";
+      window.__reclassificarWeb({
+        row: tx.row, settled_on: tx.settled_on, amount_minor: tx.amount_minor, description_raw: tx.description_raw,
+        classificacao: o.classificacao, linha: o.linha, senha: senha.value,
+      }).then(function (r) {
+        if (!r || !r.ok) {
+          btn.disabled = false;
+          btn.textContent = "Salvar";
+          msg((r && (r.msg || r.erro)) || "Não foi possível salvar.");
+          return;
+        }
+        msg("Salvo na planilha. Atualizando o painel…", true);
+        setTimeout(function () { location.reload(); }, 1200);
+      }, function (e) {
+        btn.disabled = false;
+        btn.textContent = "Salvar";
+        msg("Sem conexão com o servidor (" + e.message + ").");
+      });
+    };
+    ov.classList.remove("hidden");
+    setTimeout(function () { sel.focus(); }, 30);
+  }
+
+  // --- Receita por dia de funcionamento (Fase 5: comparar meses pelos dias uteis) ---
+  // A Santa Patinha abre de terca a sabado. Feriados nacionais que caem nesses dias saem da
+  // conta (feriados municipais/estaduais e pontos facultativos nao entram).
+  var FERIADOS_NACIONAIS = {
+    "2026-01-01": 1, "2026-04-03": 1, "2026-04-21": 1, "2026-05-01": 1, "2026-09-07": 1, "2026-10-12": 1,
+    "2026-11-02": 1, "2026-11-15": 1, "2026-11-20": 1, "2026-12-25": 1,
+    "2027-01-01": 1, "2027-03-26": 1, "2027-04-21": 1, "2027-05-01": 1, "2027-09-07": 1, "2027-10-12": 1,
+    "2027-11-02": 1, "2027-11-15": 1, "2027-11-20": 1, "2027-12-25": 1,
+  };
+  function diasFuncionamento(ym) {
+    var y = parseInt(ym.slice(0, 4), 10), mo = parseInt(ym.slice(5, 7), 10) - 1, n = 0;
+    for (var d = new Date(y, mo, 1); d.getMonth() === mo; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() < 2) continue; // domingo (0) e segunda (1)
+      var k = ym + "-" + ("0" + d.getDate()).slice(-2);
+      if (!FERIADOS_NACIONAIS[k]) n++;
+    }
+    return n;
+  }
+  function renderDias(monthsToShow) {
+    var tbl = document.getElementById("dias-table");
+    if (!tbl) return;
+    var app = DATA.receita_app || {};
+    var temApp = monthsToShow.some(function (m) { return app[m]; });
+    var linhas = monthsToShow.map(function (m) {
+      var dias = diasFuncionamento(m);
+      var rec = grupoTotal(treeFor(m), "Receitas");
+      var fat = app[m] ? Object.keys(app[m]).reduce(function (s, k) { return s + app[m][k]; }, 0) : null;
+      return { m: m, dias: dias, rec: rec, porDia: dias ? rec / dias : 0, fatDia: fat !== null && dias ? fat / dias : null };
+    });
+    var head = "<thead><tr><th class=\"col-label\">Mês</th><th>Dias (ter–sáb)</th><th>Receita</th><th>Receita por dia</th><th>vs mês anterior</th>" +
+      (temApp ? "<th>Faturamento App por dia</th>" : "") + "</tr></thead>";
+    var body = linhas.map(function (l, i) {
+      var ant = i > 0 ? linhas[i - 1] : null;
+      var d = ant && ant.porDia ? (l.porDia / ant.porDia - 1) * 100 : null;
+      var dTxt = d === null ? "—" : (d > 0 ? "▲ " : d < 0 ? "▼ " : "") + fmtPct(Math.abs(d));
+      return "<tr><td class=\"col-label\">" + monthLabel(l.m) + "</td><td class=\"num\">" + l.dias + "</td>" +
+        "<td class=\"num\">" + fmtBRL(l.rec) + "</td><td class=\"num\"><b>" + fmtBRL(Math.round(l.porDia)) + "</b></td>" +
+        "<td class=\"num col-delta " + (d === null ? "" : d >= 0 ? "good" : "bad") + "\">" + dTxt + "</td>" +
+        (temApp ? "<td class=\"num\">" + (l.fatDia === null ? "—" : fmtBRL(Math.round(l.fatDia))) + "</td>" : "") + "</tr>";
+    }).join("");
+    tbl.innerHTML = head + "<tbody>" + body + "</tbody>";
+    document.getElementById("dias-nota").textContent =
+      "Receita = grupo Receitas da DRE (extratos, regime de caixa). Faturamento App = total lançado no aplicativo no mês. " +
+      "Feriados nacionais em dia de funcionamento não contam; feriados municipais não estão descontados.";
   }
 
   function render() {
@@ -1683,6 +1882,7 @@ function initDashboard(DATA) {
     renderDFC(monthsToShow, filters);
     renderDFCChart(monthsToShow);
     renderResumo(currentKey);
+    renderDias(monthsToShow);
     if (receitaAppVisible) renderReceitaApp(currentKey);
   }
 
@@ -1869,7 +2069,9 @@ function initDashboard(DATA) {
       });
       vari.filter(function (v) { return v.delta < 0; }).reverse().slice(0, 2).forEach(function (v) {
         var l = maiorLinhaVariacao(cur, prev, v.grupo, v.classif);
-        var det = l && l.nome !== v.classif ? " — principalmente " + l.nome : "";
+        // Sempre com os valores: "principalmente Farmácia" sem numero foi lido como gasto com
+        // farmacia no mes (Fase 5), quando na verdade a linha tinha zerado.
+        var det = l && l.nome !== v.classif ? " — principalmente " + l.nome + " (" + brlAbs(l.anterior) + " → " + brlAbs(l.atual) + ")" : "";
         destaques.push(v.classif + " caiu " + brlAbs(v.delta) + " (" + brlAbs(v.gastoP) + " → " + brlAbs(v.gastoA) + ")" + det + ".");
       });
 
@@ -2128,6 +2330,19 @@ function initDashboard(DATA) {
       if (!r.ok) { falha(r.erro || 'erro desconhecido'); return; }
       ok(r.html);
     }).catch(function (e) { falha(e.message); });
+  };
+
+  // Reclassificar um lancamento do Extrato (Index.html mostra o botao so quando isto existe).
+  // A senha vai no pedido e e' conferida no servidor (Reclassificar.gs) — nao fica na pagina.
+  window.__reclassificarWeb = function (pedido) {
+    var corpoPedido = {};
+    Object.keys(pedido).forEach(function (k) { corpoPedido[k] = pedido[k]; });
+    corpoPedido.acao = 'reclassificar';
+    corpoPedido.token = lerToken();
+    return api(corpoPedido).then(function (r) {
+      if (r.erro === 'sessao') { apagarToken(); location.reload(); }
+      return r;
+    });
   };
 
   var direita = document.querySelector('.navbar-right');
