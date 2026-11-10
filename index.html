@@ -1986,8 +1986,9 @@ function initDashboard(DATA) {
         return { value: v, itemStyle: { color: ehDiaUtil(ym, d) ? cor : corFechado } };
       });
     }
-    var series = [{ name: monthLabel(a), type: "bar", data: serie(a, pa, "#1a73c7", "#9cc3e8"), barGap: "10%" }];
-    if (b) series.push({ name: monthLabel(b), type: "bar", data: serie(b, pb, "#c98f0f", "#ecd29a") });
+    // itemStyle no nivel da serie = cor da legenda; a de cada barra clareia os dias fechados.
+    var series = [{ name: monthLabel(a), type: "bar", itemStyle: { color: "#1a73c7" }, data: serie(a, pa, "#1a73c7", "#9cc3e8"), barGap: "10%" }];
+    if (b) series.push({ name: monthLabel(b), type: "bar", itemStyle: { color: "#c98f0f" }, data: serie(b, pb, "#c98f0f", "#ecd29a") });
     document.getElementById("diario-chart-sub").textContent =
       "Barras claras = dia sem expediente (domingo, segunda ou feriado). Passe o dedo/mouse numa barra para ver o dia da semana.";
     var el = document.getElementById("diario-chart");
