@@ -321,6 +321,14 @@ h1, h2, h3, h4, p { margin: 0; }
 .dias-card { margin-bottom: 20px; }
 .dias-table td, .dias-table th { white-space: nowrap; }
 .dias-nota { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
+.dias-destaque { font-size: 14px; margin: 4px 0 12px; line-height: 1.5; }
+.dias-destaque:empty { display: none; }
+.dias-mais { color: var(--green); font-weight: 700; }
+.dias-menos { color: var(--red); font-weight: 700; }
+.diario-card { margin-bottom: 20px; }
+.diario-filtros { display: flex; gap: 16px; flex-wrap: wrap; }
+.dre-table tr.diario-fechado td { color: var(--text-muted); background: var(--surface-alt); }
+.dre-table tr.diario-total td { font-weight: 700; border-top: 2px solid var(--accent-dark); }
 .duplicate-tag {
   font-size: 10px; color: var(--text-muted); background: #eee;
   border-radius: 999px; padding: 1px 6px; margin-left: 6px;
@@ -621,6 +629,7 @@ h1, h2, h3, h4, p { margin: 0; }
 
 <div class="view-tabs">
   <button class="view-tab-btn active" data-view="view-dashboard" type="button">📊 Visão Geral</button>
+  <button class="view-tab-btn" data-view="view-diario" type="button">📅 Receita por dia</button>
   <button class="view-tab-btn" data-view="__reports__" type="button">📄 Relatórios</button>
   <select id="report-phase-select" class="report-phase-select hidden">
     <option value="view-fase1">Fase 1 - Relatório YTD 2026</option>
@@ -722,8 +731,9 @@ h1, h2, h3, h4, p { margin: 0; }
   </div>
 
   <div class="card chart-card dias-card" id="dias-card">
-    <h3>Receita por dia de funcionamento</h3>
-    <p class="subtitle">A Santa Patinha abre de terça a sábado: dias de funcionamento = terças a sábados do mês, sem feriados nacionais. Período selecionado, sem filtros.</p>
+    <h3>Dias úteis e receita por dia</h3>
+    <p class="subtitle">Dias úteis = terças a sábados do mês (a Santa Patinha abre de terça a sábado), sem feriados nacionais. Dias com recebimento = dias em que entrou dinheiro de venda nos extratos. Período selecionado, sem filtros. Detalhe dia a dia na aba <b>📅 Receita por dia</b>.</p>
+    <p class="dias-destaque" id="dias-destaque"></p>
     <div class="table-scroll-x"><table class="dre-table dias-table" id="dias-table"></table></div>
     <p class="dias-nota" id="dias-nota"></p>
   </div>
@@ -768,6 +778,34 @@ h1, h2, h3, h4, p { margin: 0; }
     </div>
   </div>
 
+</div>
+
+<div class="main hidden" id="view-diario">
+  <div class="page-header">
+    <h1>Receita por dia</h1>
+    <p class="subtitle">Quanto entrou em cada dia do mês (extratos Stone + PagBank, grupo Receitas da DRE) e a comparação com outro mês. Dias úteis = terça a sábado, sem feriados nacionais.</p>
+  </div>
+  <div class="card filters-bar diario-filtros">
+    <div class="filter-group"><label for="diario-mes-a">Mês</label><select id="diario-mes-a"></select></div>
+    <div class="filter-group"><label for="diario-mes-b">Comparar com</label><select id="diario-mes-b"></select></div>
+  </div>
+  <p class="dias-destaque" id="diario-destaque"></p>
+  <div class="kpi-grid" id="diario-kpis"></div>
+  <div class="card chart-card diario-card">
+    <h3>Receita em cada dia do mês</h3>
+    <p class="subtitle" id="diario-chart-sub"></p>
+    <div class="chart-box" id="diario-chart"></div>
+  </div>
+  <div class="card chart-card diario-card">
+    <h3>Média por dia da semana</h3>
+    <p class="subtitle">Receita média de cada dia da semana (soma do mês ÷ quantos daquele dia o mês teve).</p>
+    <div class="table-scroll-x"><table class="dre-table" id="diario-semana"></table></div>
+  </div>
+  <div class="card chart-card diario-card">
+    <h3 id="diario-tabela-titulo">Dia a dia</h3>
+    <div class="table-scroll-x"><table class="dre-table" id="diario-tabela"></table></div>
+    <p class="dias-nota">O crédito entra na conta pela antecipação, um ou dois dias depois do atendimento — por isso segunda-feira pode ter recebimento mesmo com a loja fechada. Pix e débito ficam mais perto do dia do serviço.</p>
+  </div>
 </div>
 
 <div class="main hidden report-view" id="view-fase1" data-fase="fase1"><div class="report-loading">Carregando relatório…</div></div>
@@ -830,6 +868,8 @@ h1, h2, h3, h4, p { margin: 0; }
     if (viewId === 'view-dashboard' && window.__dashboardCharts) {
       window.__dashboardCharts.forEach(function (c) { c.resize(); });
     }
+    // Aba "Receita por dia": desenha (ou redesenha) so quando fica visivel.
+    if (viewId === 'view-diario' && window.__renderDiario) window.__renderDiario();
     window.scrollTo(0, 0);
   }
 
@@ -1791,33 +1831,236 @@ function initDashboard(DATA) {
     }
     return n;
   }
+  // Receita de cada dia do mes, a partir dos lancamentos do Extrato ligados as linhas do grupo
+  // Receitas (mesma base da DRE). Tipo pelo nome da linha: Pix / Debito / Credito (antecipacao)
+  // / Rendimentos (rendimento nao conta como "dia com recebimento").
+  var DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  function diaSemana(ym, dia) { return new Date(parseInt(ym.slice(0, 4), 10), parseInt(ym.slice(5, 7), 10) - 1, dia).getDay(); }
+  function ehDiaUtil(ym, dia) { return diaSemana(ym, dia) >= 2 && !FERIADOS_NACIONAIS[ym + "-" + ("0" + dia).slice(-2)]; }
+  function diasNoMes(ym) { return new Date(parseInt(ym.slice(0, 4), 10), parseInt(ym.slice(5, 7), 10), 0).getDate(); }
+  function tipoReceita(linha) {
+    if (/pix/i.test(linha)) return "pix";
+    if (/d[ée]bito/i.test(linha)) return "deb";
+    if (/rendimento/i.test(linha)) return "rend";
+    return "cred";
+  }
+  var receitaDiaCache = {};
+  function receitaPorDia(ym) {
+    if (receitaDiaCache[ym]) return receitaDiaCache[ym];
+    var porDia = {};
+    var c = classifBucket(treeFor(ym), "Receitas", "Receitas");
+    var linhas = (c && c.linhas) || {};
+    Object.keys(linhas).forEach(function (l) {
+      var tipo = tipoReceita(l);
+      (linhas[l].transactions || []).forEach(function (t) {
+        if (!t.settled_on || t.settled_on.slice(0, 7) !== ym) return;
+        var dia = parseInt(t.settled_on.slice(8, 10), 10);
+        var b = porDia[dia] || (porDia[dia] = { pix: 0, deb: 0, cred: 0, rend: 0, total: 0 });
+        b[tipo] += t.amount_minor;
+        b.total += t.amount_minor;
+      });
+    });
+    receitaDiaCache[ym] = porDia;
+    return porDia;
+  }
+  function resumoMes(ym) {
+    var pd = receitaPorDia(ym);
+    var util = diasFuncionamento(ym);
+    var comReceb = Object.keys(pd).filter(function (d) { return pd[d].total - pd[d].rend > 0; }).length;
+    var rec = grupoTotal(treeFor(ym), "Receitas");
+    var melhor = null;
+    Object.keys(pd).forEach(function (d) { if (melhor === null || pd[d].total > pd[melhor].total) melhor = d; });
+    var app = (DATA.receita_app || {})[ym];
+    var fat = app ? Object.keys(app).reduce(function (s, k) { return s + app[k]; }, 0) : null;
+    return {
+      ym: ym, util: util, comReceb: comReceb, rec: rec,
+      porUtil: util ? rec / util : 0, porReceb: comReceb ? rec / comReceb : 0,
+      fatUtil: fat !== null && util ? fat / util : null,
+      melhor: melhor === null ? null : { dia: parseInt(melhor, 10), valor: pd[melhor].total },
+    };
+  }
+  function difDias(a, b) {
+    var d = a - b;
+    return d > 0 ? '<span class="dias-mais">+' + d + "</span>" : d < 0 ? '<span class="dias-menos">−' + Math.abs(d) + "</span>" : "0";
+  }
+  function difPct(a, b) {
+    if (!b) return { txt: "—", cls: "" };
+    var p = (a / b - 1) * 100;
+    return { txt: (p > 0 ? "▲ " : p < 0 ? "▼ " : "") + fmtPct(Math.abs(p)), cls: p >= 0 ? "good" : "bad" };
+  }
+  function fraseComparacao(a, b) {
+    var nd = a.util - b.util, nr = a.comReceb - b.comReceb;
+    function qtd(n, sing, plur) { return Math.abs(n) + " " + (Math.abs(n) === 1 ? sing : plur); }
+    var p1 = nd === 0 ? "o mesmo número de dias úteis" : qtd(nd, "dia útil", "dias úteis") + (nd > 0 ? " a mais" : " a menos");
+    var p2 = nr === 0 ? "o mesmo número de dias com recebimento" : qtd(nr, "dia", "dias") + " com recebimento" + (nr > 0 ? " a mais" : " a menos");
+    var pu = difPct(a.porUtil, b.porUtil);
+    return "<b>" + monthLabel(a.ym) + "</b> teve <b>" + a.util + " dias úteis</b> e <b>" + a.comReceb + " dias com recebimento</b> — " +
+      p1 + " e " + p2 + " que " + monthLabel(b.ym) + " (" + b.util + " e " + b.comReceb + "). Receita por dia útil: <b>" +
+      fmtBRL(Math.round(a.porUtil)) + "</b> contra " + fmtBRL(Math.round(b.porUtil)) + " (" + pu.txt + ").";
+  }
+
   function renderDias(monthsToShow) {
     var tbl = document.getElementById("dias-table");
     if (!tbl) return;
-    var app = DATA.receita_app || {};
-    var temApp = monthsToShow.some(function (m) { return app[m]; });
-    var linhas = monthsToShow.map(function (m) {
-      var dias = diasFuncionamento(m);
-      var rec = grupoTotal(treeFor(m), "Receitas");
-      var fat = app[m] ? Object.keys(app[m]).reduce(function (s, k) { return s + app[m][k]; }, 0) : null;
-      return { m: m, dias: dias, rec: rec, porDia: dias ? rec / dias : 0, fatDia: fat !== null && dias ? fat / dias : null };
-    });
-    var head = "<thead><tr><th class=\"col-label\">Mês</th><th>Dias (ter–sáb)</th><th>Receita</th><th>Receita por dia</th><th>vs mês anterior</th>" +
-      (temApp ? "<th>Faturamento App por dia</th>" : "") + "</tr></thead>";
+    var linhas = monthsToShow.map(resumoMes);
+    var temApp = linhas.some(function (l) { return l.fatUtil !== null; });
+    var head = "<thead><tr><th class=\"col-label\">Mês</th><th>Dias úteis (ter–sáb)</th><th>vs mês ant.</th>" +
+      "<th>Dias com recebimento</th><th>vs mês ant.</th><th>Receita</th><th>Receita por dia útil</th><th>vs mês ant.</th>" +
+      "<th>Receita por dia c/ recebimento</th>" + (temApp ? "<th>Faturamento App por dia útil</th>" : "") + "</tr></thead>";
     var body = linhas.map(function (l, i) {
       var ant = i > 0 ? linhas[i - 1] : null;
-      var d = ant && ant.porDia ? (l.porDia / ant.porDia - 1) * 100 : null;
-      var dTxt = d === null ? "—" : (d > 0 ? "▲ " : d < 0 ? "▼ " : "") + fmtPct(Math.abs(d));
-      return "<tr><td class=\"col-label\">" + monthLabel(l.m) + "</td><td class=\"num\">" + l.dias + "</td>" +
-        "<td class=\"num\">" + fmtBRL(l.rec) + "</td><td class=\"num\"><b>" + fmtBRL(Math.round(l.porDia)) + "</b></td>" +
-        "<td class=\"num col-delta " + (d === null ? "" : d >= 0 ? "good" : "bad") + "\">" + dTxt + "</td>" +
-        (temApp ? "<td class=\"num\">" + (l.fatDia === null ? "—" : fmtBRL(Math.round(l.fatDia))) + "</td>" : "") + "</tr>";
+      var pu = ant ? difPct(l.porUtil, ant.porUtil) : { txt: "—", cls: "" };
+      return "<tr><td class=\"col-label\">" + monthLabel(l.m || l.ym) + "</td>" +
+        "<td class=\"num\">" + l.util + "</td><td class=\"num\">" + (ant ? difDias(l.util, ant.util) : "—") + "</td>" +
+        "<td class=\"num\">" + l.comReceb + "</td><td class=\"num\">" + (ant ? difDias(l.comReceb, ant.comReceb) : "—") + "</td>" +
+        "<td class=\"num\">" + fmtBRL(l.rec) + "</td><td class=\"num\"><b>" + fmtBRL(Math.round(l.porUtil)) + "</b></td>" +
+        "<td class=\"num col-delta " + pu.cls + "\">" + pu.txt + "</td>" +
+        "<td class=\"num\">" + fmtBRL(Math.round(l.porReceb)) + "</td>" +
+        (temApp ? "<td class=\"num\">" + (l.fatUtil === null ? "—" : fmtBRL(Math.round(l.fatUtil))) + "</td>" : "") + "</tr>";
     }).join("");
     tbl.innerHTML = head + "<tbody>" + body + "</tbody>";
+    document.getElementById("dias-destaque").innerHTML =
+      linhas.length >= 2 ? fraseComparacao(linhas[linhas.length - 1], linhas[linhas.length - 2]) : "";
     document.getElementById("dias-nota").textContent =
       "Receita = grupo Receitas da DRE (extratos, regime de caixa). Faturamento App = total lançado no aplicativo no mês. " +
-      "Feriados nacionais em dia de funcionamento não contam; feriados municipais não estão descontados.";
+      "Feriados nacionais em dia útil não contam; feriados municipais não estão descontados. Rendimento de aplicação não conta como dia com recebimento.";
   }
+
+  // --- Aba "Receita por dia" ---
+  var diarioChart = null;
+  var selA = document.getElementById("diario-mes-a"), selB = document.getElementById("diario-mes-b");
+  if (selA && selB) {
+    var opcoes = months.slice().reverse().map(function (m) { return '<option value="' + m + '">' + monthLabel(m) + "</option>"; }).join("");
+    selA.innerHTML = opcoes;
+    selB.innerHTML = '<option value="">— sem comparação —</option>' + opcoes;
+    selA.value = months[months.length - 1];
+    selB.value = months.length > 1 ? months[months.length - 2] : "";
+    selA.addEventListener("change", function () {
+      var i = months.indexOf(selA.value);
+      if (i > 0) selB.value = months[i - 1];
+      window.__renderDiario();
+    });
+    selB.addEventListener("change", function () { window.__renderDiario(); });
+    window.addEventListener("resize", function () {
+      if (diarioChart && !document.getElementById("view-diario").classList.contains("hidden")) diarioChart.resize();
+    });
+  }
+  window.__renderDiario = function () {
+    if (!selA) return;
+    var a = selA.value, b = selB.value && selB.value !== a ? selB.value : null;
+    var ra = resumoMes(a), rb = b ? resumoMes(b) : null;
+    var pa = receitaPorDia(a), pb = b ? receitaPorDia(b) : {};
+
+    document.getElementById("diario-destaque").innerHTML = rb ? fraseComparacao(ra, rb) : "";
+
+    function kpi(label, valor, delta, cls) {
+      return '<div class="card kpi-card grp-receitas"><div class="kpi-label">' + label + '</div><div class="kpi-value">' + valor +
+        "</div>" + (delta ? '<div class="kpi-delta ' + (cls || "") + '">' + delta + "</div>" : "") + "</div>";
+    }
+    var vs = rb ? " vs " + monthLabelShort(b) + "/" + b.slice(2, 4) : "";
+    function dDias(x, y) { var d = x - y; return (d > 0 ? "+" + d : d < 0 ? "−" + Math.abs(d) : "0") + (Math.abs(d) === 1 ? " dia" : " dias") + vs; }
+    function dPct(x, y) { var r = difPct(x, y); return { txt: r.txt + vs, cls: r.cls === "good" ? "up" : r.cls === "bad" ? "down" : "" }; }
+    var k = [];
+    k.push(kpi("Dias úteis (ter–sáb)", ra.util, rb ? dDias(ra.util, rb.util) : "", rb ? (ra.util >= rb.util ? "up" : "down") : ""));
+    k.push(kpi("Dias com recebimento", ra.comReceb, rb ? dDias(ra.comReceb, rb.comReceb) : "", rb ? (ra.comReceb >= rb.comReceb ? "up" : "down") : ""));
+    var x1 = rb ? dPct(ra.rec, rb.rec) : null;
+    k.push(kpi("Receita do mês", fmtBRL(ra.rec), x1 && x1.txt, x1 && x1.cls));
+    var x2 = rb ? dPct(ra.porUtil, rb.porUtil) : null;
+    k.push(kpi("Receita por dia útil", fmtBRL(Math.round(ra.porUtil)), x2 && x2.txt, x2 && x2.cls));
+    var x3 = rb ? dPct(ra.porReceb, rb.porReceb) : null;
+    k.push(kpi("Receita por dia c/ recebimento", fmtBRL(Math.round(ra.porReceb)), x3 && x3.txt, x3 && x3.cls));
+    if (ra.melhor) {
+      k.push(kpi("Melhor dia", ("0" + ra.melhor.dia).slice(-2) + "/" + a.slice(5, 7) + " (" + DIAS_SEMANA[diaSemana(a, ra.melhor.dia)] + ")",
+        fmtBRL(ra.melhor.valor), ""));
+    }
+    document.getElementById("diario-kpis").innerHTML = k.join("");
+
+    // Grafico: receita de cada dia do mes (barras), mes comparado ao lado.
+    var n = Math.max(diasNoMes(a), b ? diasNoMes(b) : 0);
+    var dias = [];
+    for (var i = 1; i <= n; i++) dias.push(i);
+    function serie(ym, pd, cor, corFechado) {
+      return dias.map(function (d) {
+        if (d > diasNoMes(ym)) return null;
+        var v = pd[d] ? pd[d].total / 100 : 0;
+        return { value: v, itemStyle: { color: ehDiaUtil(ym, d) ? cor : corFechado } };
+      });
+    }
+    var series = [{ name: monthLabel(a), type: "bar", data: serie(a, pa, "#1a73c7", "#9cc3e8"), barGap: "10%" }];
+    if (b) series.push({ name: monthLabel(b), type: "bar", data: serie(b, pb, "#c98f0f", "#ecd29a") });
+    document.getElementById("diario-chart-sub").textContent =
+      "Barras claras = dia sem expediente (domingo, segunda ou feriado). Passe o dedo/mouse numa barra para ver o dia da semana.";
+    var el = document.getElementById("diario-chart");
+    if (!diarioChart) diarioChart = echarts.init(el);
+    diarioChart.setOption({
+      grid: { left: 56, right: 12, top: 36, bottom: 30 },
+      legend: { top: 0 },
+      tooltip: {
+        trigger: "axis", axisPointer: { type: "shadow" },
+        formatter: function (ps) {
+          var d = ps[0].axisValue;
+          return ps.map(function (p) {
+            var ym = p.seriesIndex === 0 ? a : b;
+            if (p.data === null) return "";
+            return p.marker + monthLabelShort(ym) + " " + d + " (" + DIAS_SEMANA[diaSemana(ym, d)] + "): <b>" +
+              fmtBRL(Math.round(p.data.value * 100)) + "</b>";
+          }).join("<br>");
+        },
+      },
+      xAxis: { type: "category", data: dias },
+      yAxis: { type: "value", axisLabel: { formatter: function (v) { return "R$ " + (v >= 1000 ? (v / 1000).toLocaleString("pt-BR") + " mil" : v); } } },
+      series: series,
+    }, true);
+    diarioChart.resize();
+
+    // Media por dia da semana.
+    function porSemana(ym, pd) {
+      var out = {};
+      for (var d = 1; d <= diasNoMes(ym); d++) {
+        var w = diaSemana(ym, d);
+        var o = out[w] || (out[w] = { qtd: 0, soma: 0 });
+        var feriado = FERIADOS_NACIONAIS[ym + "-" + ("0" + d).slice(-2)];
+        if (!feriado) o.qtd++;
+        o.soma += pd[d] ? pd[d].total : 0;
+      }
+      return out;
+    }
+    var sa = porSemana(a, pa), sb = b ? porSemana(b, pb) : null;
+    var ordem = [2, 3, 4, 5, 6, 0, 1];
+    var cab = "<thead><tr><th class=\"col-label\">Dia da semana</th><th>Qtd. em " + monthLabelShort(a) + "</th><th>Receita</th><th>Média " +
+      monthLabelShort(a) + "</th>" + (sb ? "<th>Média " + monthLabelShort(b) + "</th><th>Variação</th>" : "") + "</tr></thead>";
+    var corpo = ordem.map(function (w) {
+      var x = sa[w], y = sb ? sb[w] : null;
+      if (!x || (w < 2 && !x.soma && !(y && y.soma))) return "";
+      var ma = x.qtd ? x.soma / x.qtd : 0, mb = y && y.qtd ? y.soma / y.qtd : 0;
+      var dv = sb ? difPct(ma, mb) : null;
+      return "<tr" + (w < 2 ? ' class="diario-fechado"' : "") + "><td class=\"col-label\">" + DIAS_SEMANA[w] + (w < 2 ? " (fechado)" : "") + "</td>" +
+        "<td class=\"num\">" + x.qtd + "</td><td class=\"num\">" + fmtBRL(x.soma) + "</td><td class=\"num\"><b>" + fmtBRL(Math.round(ma)) + "</b></td>" +
+        (sb ? "<td class=\"num\">" + fmtBRL(Math.round(mb)) + "</td><td class=\"num col-delta " + dv.cls + "\">" + dv.txt + "</td>" : "") + "</tr>";
+    }).join("");
+    document.getElementById("diario-semana").innerHTML = cab + "<tbody>" + corpo + "</tbody>";
+
+    // Tabela dia a dia do mes escolhido.
+    document.getElementById("diario-tabela-titulo").textContent = "Dia a dia — " + monthLabel(a);
+    var acum = 0, tot = { pix: 0, deb: 0, cred: 0, rend: 0, total: 0 };
+    var linhasDia = [];
+    for (var d = 1; d <= diasNoMes(a); d++) {
+      var v = pa[d] || { pix: 0, deb: 0, cred: 0, rend: 0, total: 0 };
+      acum += v.total;
+      Object.keys(tot).forEach(function (kk) { tot[kk] += v[kk]; });
+      var util = ehDiaUtil(a, d);
+      var cel = function (c) { return '<td class="num">' + (c ? fmtBRL(c) : "—") + "</td>"; };
+      linhasDia.push("<tr" + (util ? "" : ' class="diario-fechado"') + "><td class=\"col-label\">" + ("0" + d).slice(-2) + "/" + a.slice(5, 7) +
+        " " + DIAS_SEMANA[diaSemana(a, d)] + "</td><td>" + (util ? "sim" : "não") + "</td>" + cel(v.pix) + cel(v.deb) + cel(v.cred) +
+        '<td class="num"><b>' + (v.total ? fmtBRL(v.total) : "—") + "</b></td><td class=\"num\">" + fmtBRL(acum) + "</td></tr>");
+    }
+    linhasDia.push('<tr class="diario-total"><td class="col-label">Total</td><td>' + ra.util + " úteis</td><td class=\"num\">" + fmtBRL(tot.pix) +
+      "</td><td class=\"num\">" + fmtBRL(tot.deb) + "</td><td class=\"num\">" + fmtBRL(tot.cred) + "</td><td class=\"num\">" + fmtBRL(tot.total) +
+      "</td><td></td></tr>");
+    document.getElementById("diario-tabela").innerHTML =
+      "<thead><tr><th class=\"col-label\">Dia</th><th>Dia útil</th><th>Pix</th><th>Débito</th><th>Crédito (antecipação)</th><th>Total do dia</th><th>Acumulado</th></tr></thead>" +
+      "<tbody>" + linhasDia.join("") + "</tbody>";
+  };
 
   function render() {
     var fromIdx = parseInt(rangeFromEl.value, 10);
