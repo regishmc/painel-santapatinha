@@ -326,6 +326,14 @@ h1, h2, h3, h4, p { margin: 0; }
 .dias-mais { color: var(--green); font-weight: 700; }
 .dias-menos { color: var(--red); font-weight: 700; }
 .diario-card { margin-bottom: 20px; }
+.taxas-card { margin-bottom: 20px; }
+.taxas-table td, .taxas-table th { white-space: nowrap; }
+.taxas-table td.taxa-melhor { font-weight: 800; color: var(--green); background: var(--green-tint); }
+.taxas-table td.taxa-atual { font-weight: 700; color: var(--accent-dark); background: var(--accent-tint); }
+.taxas-table td.taxa-nd { color: var(--text-muted); }
+.taxas-table td.wrap { white-space: normal; min-width: 220px; }
+.taxas-checklist li { margin-bottom: 8px; }
+#taxas-chart { height: 340px; margin-top: 12px; }
 .diario-filtros { display: flex; gap: 16px; flex-wrap: wrap; }
 .dre-table tr.diario-fechado td { color: var(--text-muted); background: var(--surface-alt); }
 .dre-table tr.diario-total td { font-weight: 700; border-top: 2px solid var(--accent-dark); }
@@ -630,6 +638,7 @@ h1, h2, h3, h4, p { margin: 0; }
 <div class="view-tabs">
   <button class="view-tab-btn active" data-view="view-dashboard" type="button">📊 Visão Geral</button>
   <button class="view-tab-btn" data-view="view-diario" type="button">📅 Receita por dia</button>
+  <button class="view-tab-btn" data-view="view-taxas" type="button">💳 Taxas Maquininha</button>
   <button class="view-tab-btn" data-view="__reports__" type="button">📄 Relatórios</button>
   <select id="report-phase-select" class="report-phase-select hidden">
     <option value="view-fase1">Fase 1 - Relatório YTD 2026</option>
@@ -808,6 +817,58 @@ h1, h2, h3, h4, p { margin: 0; }
   </div>
 </div>
 
+<div class="main hidden" id="view-taxas">
+  <div class="page-header">
+    <h1>Taxas de maquininha</h1>
+    <p class="subtitle">Comparativo ilustrativo entre Mercado Pago, Ton (Stone) e PagBank, com as taxas que a Santa Patinha paga hoje — calculadas a partir dos recebimentos nos extratos.</p>
+  </div>
+  <div class="kpi-grid" id="taxas-kpis"></div>
+
+  <div class="card chart-card taxas-card">
+    <h3>Comparativo das propostas</h3>
+    <p class="subtitle">Taxa sobre o valor da venda. <b>Em destaque</b> a menor de cada linha. A última coluna é a taxa que a Santa Patinha <b>paga hoje</b> na Ton, medida nos extratos.</p>
+    <div class="table-scroll-x"><table class="dre-table taxas-table" id="taxas-comparativo"></table></div>
+    <div class="chart-box" id="taxas-chart"></div>
+    <p class="dias-nota">PagBank parcelado: 5,59% + 2,99% ao mês (maquininha) — não dá para comparar só os 5,59% com as taxas finais dos outros, por isso fica fora do gráfico. Ton: os prints mostram só até 4 parcelas.</p>
+  </div>
+
+  <div class="card chart-card taxas-card">
+    <h3>Quanto sobra de cada R$ 1.000 vendidos</h3>
+    <div class="table-scroll-x"><table class="dre-table taxas-table" id="taxas-mil"></table></div>
+  </div>
+
+  <div class="card chart-card taxas-card">
+    <h3>Simulação com o volume da Santa Patinha</h3>
+    <p class="subtitle" id="taxas-sim-sub"></p>
+    <div class="table-scroll-x"><table class="dre-table taxas-table" id="taxas-sim"></table></div>
+    <p class="dias-nota" id="taxas-sim-nota"></p>
+  </div>
+
+  <div class="card chart-card taxas-card">
+    <h3>Taxas praticadas atualmente (histórico dos extratos)</h3>
+    <p class="subtitle">Como os serviços têm preço redondo (R$ 60, R$ 110…), cada recebimento líquido revela a taxa cobrada — ex.: R$ 98,55 = R$ 100 − 1,45%. Recebimentos que juntam vendas com taxas diferentes no mesmo dia ficam como "não identificados".</p>
+    <div class="table-scroll-x"><table class="dre-table taxas-table" id="taxas-historico"></table></div>
+    <p class="dias-nota" id="taxas-historico-nota"></p>
+  </div>
+
+  <div class="card chart-card taxas-card">
+    <h3>App × extratos — o que está registrado como cartão</h3>
+    <p class="subtitle">Faturamento no cartão lançado no App (valor cheio) comparado ao que entrou nos extratos (líquido, convertido para valor cheio pelas taxas acima).</p>
+    <div class="table-scroll-x"><table class="dre-table taxas-table" id="taxas-app"></table></div>
+    <p class="dias-nota" id="taxas-app-nota"></p>
+  </div>
+
+  <div class="card chart-card taxas-card">
+    <h3>Qual compensa em cada modalidade</h3>
+    <div class="table-scroll-x"><table class="dre-table taxas-table" id="taxas-recomendacao"></table></div>
+  </div>
+
+  <div class="card chart-card taxas-card">
+    <h3>O que verificar antes de trocar</h3>
+    <ul class="resumo-list taxas-checklist" id="taxas-checklist"></ul>
+  </div>
+</div>
+
 <div class="main hidden report-view" id="view-fase1" data-fase="fase1"><div class="report-loading">Carregando relatório…</div></div>
 
 <div class="main hidden report-view" id="view-fase2" data-fase="fase2"><div class="report-loading">Carregando relatório…</div></div>
@@ -870,6 +931,7 @@ h1, h2, h3, h4, p { margin: 0; }
     }
     // Aba "Receita por dia": desenha (ou redesenha) so quando fica visivel.
     if (viewId === 'view-diario' && window.__renderDiario) window.__renderDiario();
+    if (viewId === 'view-taxas' && window.__renderTaxas) window.__renderTaxas();
     window.scrollTo(0, 0);
   }
 
@@ -2062,6 +2124,272 @@ function initDashboard(DATA) {
       "<thead><tr><th class=\"col-label\">Dia</th><th>Dia útil</th><th>Pix</th><th>Débito</th><th>Crédito (antecipação)</th><th>Total do dia</th><th>Acumulado</th></tr></thead>" +
       "<tbody>" + linhasDia.join("") + "</tbody>";
   };
+
+  // --- Aba "Taxas Maquininha" ---
+  // Propostas (prints enviados pela cliente em 11/2026). null = nao informado / nao comparavel.
+  var PROPOSTAS = {
+    colunas: ["Mercado Pago", "Ton Visa/MC", "Ton Elo/Amex", "PagBank maquininha", "PagBank Tap On"],
+    linhas: [
+      ["Débito", [0.99, 1.45, 2.64, 2.98, 0.88]],
+      ["Crédito 1x", [3.05, 3.51, 4.70, 4.99, 3.14]],
+      ["Crédito 2x", [4.40, 6.99, 8.38, null, null]],
+      ["Crédito 3x", [5.25, 6.99, 8.38, null, null]],
+      ["Crédito 4x", [6.10, 7.99, 9.38, null, null]],
+      ["Crédito 5x", [6.95, null, null, null, null]],
+      ["Crédito 6x", [7.80, null, null, null, null]],
+      ["Crédito 7x", [9.25, null, null, null, null]],
+      ["Crédito 8x", [10.10, null, null, null, null]],
+      ["Crédito 9x", [10.95, null, null, null, null]],
+      ["Crédito 10x", [11.80, null, null, null, null]],
+      ["Crédito 11x", [12.65, null, null, null, null]],
+      ["Crédito 12x", [13.50, null, null, null, null]],
+      ["Pix na maquininha", [null, 0.99, 0.99, 0.99, null]],
+    ],
+    recebimento: ["Na hora", "Próximo dia útil", "Próximo dia útil", "Na hora", "Na hora"],
+  };
+  // Planos que ja apareceram nos extratos: a taxa e' deduzida do valor liquido recebido.
+  var PLANOS_HIST = [
+    { nome: "Ton", banco: "stone", de: "2026-06-15", ate: "9999-12", deb: [1.45], debElo: [2.64], cred: [3.51], credElo: [4.70], parc: [6.99, 7.99, 8.38, 9.38] },
+    { nome: "Stone (plano antigo)", banco: "stone", de: "0000-00", ate: "2026-06-20", deb: [1.66, 1.67], debElo: [], cred: [3.94, 3.95], credElo: [], parc: [] },
+    { nome: "PagBank", banco: "pagbank", de: "0000-00", ate: "9999-12", deb: [3.08], debElo: [], cred: [3.14, 3.15], credElo: [], parc: [] },
+  ];
+  function pctBR(v, casas) { return v === null || v === undefined || isNaN(v) ? "—" : v.toFixed(casas === undefined ? 2 : casas).replace(".", ",") + "%"; }
+  function inferirTaxa(valor, banco, data) {
+    var melhor = null;
+    PLANOS_HIST.forEach(function (p) {
+      if (p.banco !== banco || data < p.de || data > p.ate + "-31") return;
+      [["deb", p.deb], ["debElo", p.debElo], ["cred", p.cred], ["credElo", p.credElo], ["parc", p.parc]].forEach(function (par) {
+        par[1].forEach(function (t) {
+          var bruto = valor / (1 - t / 100), redondo = Math.round(bruto / 5) * 5, err = Math.abs(bruto - redondo);
+          if (redondo > 0 && err <= 0.011 && (!melhor || err < melhor.err)) melhor = { plano: p.nome, tipo: par[0], taxa: t, bruto: redondo, err: err };
+        });
+      });
+    });
+    return melhor;
+  }
+  var taxasCache = null;
+  function analisarTaxas() {
+    if (taxasCache) return taxasCache;
+    var porMes = {};
+    months.forEach(function (m) {
+      var r = { planos: {}, deb: { G: 0, R: 0, n: 0 }, debElo: { G: 0, R: 0, n: 0 }, cred: { G: 0, R: 0, n: 0 }, credElo: { G: 0, R: 0, n: 0 },
+        parc: { G: 0, R: 0, n: 0 }, nao: { R: 0, n: 0 }, pix: { G: 0, tarifa: 0, n: 0 }, pag: { G: 0, R: 0, n: 0 } };
+      var c = classifBucket(treeFor(m), "Receitas", "Receitas");
+      var linhas = (c && c.linhas) || {};
+      var pixMaqPorDia = {};
+      Object.keys(linhas).forEach(function (l) {
+        (linhas[l].transactions || []).forEach(function (t) {
+          if (t.amount_minor <= 0) return;
+          var reais = t.amount_minor / 100, desc = t.description_raw || "";
+          if (/maquininha/i.test(desc)) { pixMaqPorDia[t.settled_on] = (pixMaqPorDia[t.settled_on] || 0) + reais; return; }
+          var ehCartao = /recebimento vendas|vendas - disponivel/i.test(desc);
+          if (!ehCartao) return;
+          var f = inferirTaxa(reais, t.banco, t.settled_on);
+          if (!f) { r.nao.R += reais; r.nao.n++; return; }
+          r.planos[f.plano] = true;
+          var b = f.plano === "PagBank" ? r.pag : r[f.tipo]; // PagBank em coluna propria (taxas bem diferentes)
+          b.G += f.bruto; b.R += reais; b.n++;
+        });
+      });
+      // Pix na maquininha: a tarifa sai como "Tarifa" no mesmo dia.
+      var tar = linhaBucket(treeFor(m), "Redutor Receitas", "Redutor Receitas", "Tarifas");
+      ((tar && tar.transactions) || []).forEach(function (t) {
+        var g = pixMaqPorDia[t.settled_on];
+        if (g && t.amount_minor < 0 && -t.amount_minor / 100 <= g * 0.012) { r.pix.G += g; r.pix.tarifa += -t.amount_minor / 100; r.pix.n++; }
+      });
+      porMes[m] = r;
+    });
+    taxasCache = porMes;
+    return porMes;
+  }
+  function taxaDe(b) { return b.G ? (1 - b.R / b.G) * 100 : null; }
+
+  window.__renderTaxas = function () {
+    var porMes = analisarTaxas();
+    var comCartao = months.filter(function (m) { var r = porMes[m]; return r.cred.n + r.deb.n + r.nao.n > 0; });
+    var ult = comCartao[comCartao.length - 1];
+    var ultimos = comCartao.filter(function (m) { return porMes[m].planos["Ton"]; }).slice(-3);
+    if (!ultimos.length) ultimos = comCartao.slice(-3);
+    var ru = porMes[ult];
+
+    // Volume medio mensal (valor cheio) dos ultimos meses no plano atual.
+    var vol = { deb: 0, debElo: 0, cred: 0, credElo: 0, parc: 0, pagoHoje: 0 };
+    ultimos.forEach(function (m) {
+      var r = porMes[m];
+      ["deb", "debElo", "cred", "credElo", "parc"].forEach(function (k) { vol[k] += r[k].G; vol.pagoHoje += r[k].G - r[k].R; });
+      var tc = taxaDe(r.cred) || 3.51;
+      vol.cred += r.nao.R / (1 - tc / 100);           // nao identificados: tratados como credito a vista
+      vol.pagoHoje += r.nao.R / (1 - tc / 100) - r.nao.R;
+    });
+    Object.keys(vol).forEach(function (k) { vol[k] /= ultimos.length; });
+
+    // Custo mensal de debito + credito (a vista e parcelado) em cada adquirente.
+    function custo(tx) {
+      return vol.deb * tx.deb / 100 + vol.debElo * tx.debElo / 100 + vol.cred * tx.cred / 100 + vol.credElo * tx.credElo / 100 + vol.parc * tx.parc / 100;
+    }
+    // Taxa media do parcelado que a Ton cobrou de fato nesses meses (se nao houve, 6,99%).
+    var parcG = 0, parcR = 0;
+    ultimos.forEach(function (m) { parcG += porMes[m].parc.G; parcR += porMes[m].parc.R; });
+    var parcTon = parcG ? (1 - parcR / parcG) * 100 : 6.99;
+    var cenarios = [
+      { nome: "Ton (hoje)", tx: { deb: 1.45, debElo: 2.64, cred: 3.51, credElo: 4.70, parc: parcTon }, nota: "taxas do plano atual (parcelado pela média praticada)" },
+      { nome: "Mercado Pago", tx: { deb: 0.99, debElo: 0.99, cred: 3.05, credElo: 3.05, parc: 5.25 }, nota: "Elo/Amex considerado com a mesma taxa (confirmar); parcelado pela taxa de 3x" },
+      { nome: "PagBank Tap On", tx: { deb: 0.88, debElo: 0.88, cred: 3.14, credElo: 3.14, parc: parcTon }, nota: "pelo celular; parcelado mantido igual à Ton (taxa + 2,99% a.m. não confirmada)" },
+      { nome: "PagBank maquininha", tx: { deb: 2.98, debElo: 2.98, cred: 4.99, credElo: 4.99, parc: parcTon }, nota: "parcelado mantido igual à Ton (5,59% + 2,99% a.m. não confirmado)" },
+    ];
+    var custoHoje = custo(cenarios[0].tx);
+    var mp = custo(cenarios[1].tx);
+
+    // KPIs
+    function kpi(label, valor, delta, cls, grupo) {
+      return '<div class="card kpi-card ' + (grupo || "grp-receitas") + '"><div class="kpi-label">' + label + '</div><div class="kpi-value">' + valor +
+        "</div>" + (delta ? '<div class="kpi-delta ' + (cls || "") + '">' + delta + "</div>" : "") + "</div>";
+    }
+    var k = [];
+    k.push(kpi("Crédito à vista hoje", pctBR(taxaDe(ru.cred)), "Ton, medido em " + monthLabel(ult), ""));
+    k.push(kpi("Débito hoje", pctBR(taxaDe(ru.deb)), "Elo: " + pctBR(taxaDe(ru.debElo) || 2.64), ""));
+    k.push(kpi("Taxas de cartão por mês", fmtBRL(Math.round(vol.pagoHoje * 100)), "média de " + ultimos.map(monthLabelShort).join(", "), "down", "grp-despesas"));
+    k.push(kpi("Economia com Mercado Pago", fmtBRL(Math.round((custoHoje - mp) * 100)) + "/mês", "≈ " + fmtBRL(Math.round((custoHoje - mp) * 1200)) + " por ano", "up", "grp-lucro"));
+    document.getElementById("taxas-kpis").innerHTML = k.join("");
+
+    // Tabela comparativa + coluna "praticada hoje"
+    var praticada = {
+      "Débito": taxaDe(ru.deb), "Crédito 1x": taxaDe(ru.cred), "Pix na maquininha": ru.pix.G ? ru.pix.tarifa / ru.pix.G * 100 : null,
+    };
+    var tbl = "<thead><tr><th class=\"col-label\">Modalidade</th>" + PROPOSTAS.colunas.map(function (c) { return "<th>" + c + "</th>"; }).join("") +
+      "<th>Praticada hoje (Ton)</th></tr></thead><tbody>";
+    PROPOSTAS.linhas.forEach(function (l) {
+      var vals = l[1], min = Math.min.apply(null, vals.filter(function (v) { return v !== null; }));
+      tbl += "<tr><td class=\"col-label\">" + l[0] + "</td>" + vals.map(function (v) {
+        return v === null ? '<td class="num taxa-nd">—</td>' : '<td class="num' + (v === min ? " taxa-melhor" : "") + '">' + pctBR(v) + "</td>";
+      }).join("") + '<td class="num taxa-atual">' + (praticada[l[0]] !== undefined && praticada[l[0]] !== null ? pctBR(praticada[l[0]]) : "") + "</td></tr>";
+    });
+    tbl += "<tr><td class=\"col-label\">Recebimento</td>" + PROPOSTAS.recebimento.map(function (r) { return '<td class="num">' + r + "</td>"; }).join("") + "<td></td></tr>";
+    document.getElementById("taxas-comparativo").innerHTML = tbl + "</tbody>";
+
+    // Grafico (debito, credito 1x a 4x)
+    var el = document.getElementById("taxas-chart");
+    var ch = echarts.getInstanceByDom(el) || echarts.init(el);
+    var cores = ["#00a3e0", "#0f8a4b", "#7fc8a0", "#c98f0f", "#f0b429"];
+    var cats = ["Débito", "Crédito 1x", "Crédito 2x", "Crédito 3x", "Crédito 4x"];
+    ch.setOption({
+      grid: { left: 48, right: 12, top: 56, bottom: 30 },
+      legend: { top: 0 },
+      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: function (v) { return v === null || v === undefined ? "—" : pctBR(v); } },
+      xAxis: { type: "category", data: cats },
+      yAxis: { type: "value", axisLabel: { formatter: function (v) { return v + "%"; } } },
+      series: PROPOSTAS.colunas.map(function (c, i) {
+        return { name: c, type: "bar", itemStyle: { color: cores[i] }, data: cats.map(function (cat) {
+          var l = PROPOSTAS.linhas.filter(function (x) { return x[0] === cat; })[0]; return l ? l[1][i] : null;
+        }) };
+      }),
+    }, true);
+    ch.resize();
+
+    // R$ 1.000
+    var mil = "<thead><tr><th class=\"col-label\">Venda de R$ 1.000 em…</th>" + PROPOSTAS.colunas.map(function (c) { return "<th>" + c + "</th>"; }).join("") +
+      "<th>Diferença Mercado Pago × Ton Visa/MC</th></tr></thead><tbody>";
+    PROPOSTAS.linhas.slice(0, 5).forEach(function (l) {
+      var vals = l[1], max = Math.max.apply(null, vals.filter(function (v) { return v !== null; }).map(function (v) { return 1000 - v * 10; }));
+      mil += "<tr><td class=\"col-label\">" + l[0] + "</td>" + vals.map(function (v) {
+        if (v === null) return '<td class="num taxa-nd">—</td>';
+        var liq = 1000 - v * 10;
+        return '<td class="num' + (liq === max ? " taxa-melhor" : "") + '">' + fmtBRL(Math.round(liq * 100)) + "</td>";
+      }).join("") + '<td class="num">' + (vals[0] !== null && vals[1] !== null ? "+" + fmtBRL(Math.round((vals[1] - vals[0]) * 1000)) : "—") + "</td></tr>";
+    });
+    document.getElementById("taxas-mil").innerHTML = mil + "</tbody>";
+
+    // Simulacao
+    document.getElementById("taxas-sim-sub").textContent =
+      "Volume médio mensal no cartão (valor cheio) em " + ultimos.map(monthLabel).join(", ") + ": débito " + fmtBRL(Math.round((vol.deb + vol.debElo) * 100)) +
+      ", crédito à vista " + fmtBRL(Math.round((vol.cred + vol.credElo) * 100)) + ", parcelado " + fmtBRL(Math.round(vol.parc * 100)) +
+      ". Mesmo volume aplicado a cada adquirente.";
+    var sim = "<thead><tr><th class=\"col-label\">Adquirente</th><th>Débito</th><th>Crédito à vista</th><th>Parcelado</th><th>Total por mês</th><th>vs Ton hoje</th><th>Por ano</th><th>Observação</th></tr></thead><tbody>";
+    cenarios.forEach(function (c, i) {
+      var d = vol.deb * c.tx.deb / 100 + vol.debElo * c.tx.debElo / 100;
+      var cr = vol.cred * c.tx.cred / 100 + vol.credElo * c.tx.credElo / 100;
+      var pa = vol.parc * c.tx.parc / 100, tot = d + cr + pa, dif = tot - custoHoje;
+      sim += "<tr><td class=\"col-label\">" + c.nome + "</td><td class=\"num\">" + fmtBRL(Math.round(d * 100)) + "</td><td class=\"num\">" + fmtBRL(Math.round(cr * 100)) +
+        "</td><td class=\"num\">" + fmtBRL(Math.round(pa * 100)) + "</td><td class=\"num\"><b>" + fmtBRL(Math.round(tot * 100)) + "</b></td>" +
+        "<td class=\"num col-delta " + (i === 0 ? "" : dif < 0 ? "good" : "bad") + "\">" + (i === 0 ? "—" : (dif < 0 ? "−" : "+") + fmtBRL(Math.round(Math.abs(dif) * 100))) + "</td>" +
+        "<td class=\"num\">" + (i === 0 ? "—" : (dif < 0 ? "−" : "+") + fmtBRL(Math.round(Math.abs(dif) * 1200))) + "</td><td class=\"wrap\">" + c.nota + "</td></tr>";
+    });
+    document.getElementById("taxas-sim").innerHTML = sim + "</tbody>";
+    document.getElementById("taxas-sim-nota").textContent =
+      "Pix direto na chave (sem maquininha) continua sem taxa em qualquer cenário — é a forma mais barata de receber. " +
+      "Recebimentos que não deu para identificar a taxa entram como crédito à vista.";
+
+    // Historico das taxas praticadas
+    var hist = "<thead><tr><th class=\"col-label\">Mês</th><th>Plano</th><th>Débito Visa/MC</th><th>Débito Elo</th><th>Crédito à vista</th><th>Parcelado</th>" +
+      "<th>Pix maquininha</th><th>PagBank (cartão)</th><th>Recebimentos identificados</th><th>Taxas pagas (estimado)</th></tr></thead><tbody>";
+    comCartao.forEach(function (m) {
+      var r = porMes[m], tot = r.deb.n + r.debElo.n + r.cred.n + r.credElo.n + r.parc.n + r.pag.n + r.nao.n;
+      var ident = tot - r.nao.n;
+      var tc = taxaDe(r.cred) || 0;
+      var pago = ["deb", "debElo", "cred", "credElo", "parc", "pag"].reduce(function (s, kk) { return s + r[kk].G - r[kk].R; }, 0) + (tc ? r.nao.R / (1 - tc / 100) - r.nao.R : 0);
+      function cel(b) { return b.n ? pctBR(taxaDe(b)) + " <small>(" + b.n + ")</small>" : "—"; }
+      hist += "<tr><td class=\"col-label\">" + monthLabel(m) + "</td><td>" + (Object.keys(r.planos).join(" + ") || "—") + "</td><td class=\"num\">" + cel(r.deb) +
+        "</td><td class=\"num\">" + cel(r.debElo) + "</td><td class=\"num\">" + cel(r.cred) + "</td><td class=\"num\">" +
+        (r.parc.n ? pctBR(taxaDe(r.parc)) + " <small>(" + r.parc.n + ")</small>" : "—") + "</td><td class=\"num\">" +
+        (r.pix.n ? pctBR(r.pix.tarifa / r.pix.G * 100) + " <small>(" + r.pix.n + ")</small>" : "—") + "</td><td class=\"num\">" + cel(r.pag) + "</td><td class=\"num\">" +
+        ident + " de " + tot + "</td><td class=\"num\">" + fmtBRL(Math.round(pago * 100)) + "</td></tr>";
+    });
+    document.getElementById("taxas-historico").innerHTML = hist + "</tbody>";
+    document.getElementById("taxas-historico-nota").textContent =
+      "Entre parênteses, quantos recebimentos confirmaram a taxa. Até meados de junho/2026 a conta estava no plano antigo da Stone (crédito ~3,95%, débito ~1,66%); " +
+      "a partir de 16/06 os recebimentos batem com o plano Ton (crédito 3,51%, débito 1,45%, Elo 2,64%). No PagBank (jan–abr) as vendas no cartão saíram por ~3,14% (crédito) e ~3,08% (débito). " +
+      "O App também registra 3,51% (crédito), 1,45% (débito) e 2,64% (débito Elo) nas vendas em que a taxa foi preenchida.";
+
+    // App x extratos
+    var app = DATA.receita_app || {};
+    var appMeses = comCartao.filter(function (m) { return app[m]; });
+    var at = "<thead><tr><th class=\"col-label\">Mês</th><th>Cartão no App</th><th>Cartão nos extratos (valor cheio)</th><th>Diferença</th><th>No App como Pix/dinheiro/sem forma</th></tr></thead><tbody>";
+    appMeses.forEach(function (m) {
+      var a = app[m], cart = 0, outros = 0;
+      Object.keys(a).forEach(function (f) {
+        if (/cr[ée]dito|d[ée]bito/i.test(f)) cart += a[f]; else outros += a[f];
+      });
+      var r = porMes[m], tc = taxaDe(r.cred) || 3.51;
+      var ext = (r.deb.G + r.debElo.G + r.cred.G + r.credElo.G + r.parc.G + r.pag.G + r.nao.R / (1 - tc / 100)) * 100;
+      var dif = ext - cart;
+      at += "<tr><td class=\"col-label\">" + monthLabel(m) + (m === "2026-06" ? " <small>(App desde 16/06)</small>" : "") + "</td><td class=\"num\">" + fmtBRL(cart) +
+        "</td><td class=\"num\">" + fmtBRL(Math.round(ext)) + "</td><td class=\"num col-delta " + (Math.abs(dif) < 5000 ? "" : "bad") + "\">" +
+        (dif >= 0 ? "+" : "−") + fmtBRL(Math.round(Math.abs(dif))) + "</td><td class=\"num\">" + fmtBRL(outros) + "</td></tr>";
+    });
+    document.getElementById("taxas-app").innerHTML = at + "</tbody>";
+    document.getElementById("taxas-app-nota").textContent =
+      "Quando o extrato tem mais cartão do que o App, parte das vendas no cartão foi lançada no App como Pix, pacote ou sem forma de pagamento — por isso a taxa não pode ser calculada só pelo App. " +
+      "Registrar a forma de pagamento certa no App deixa o acompanhamento das taxas (e da meta do Pix) mais preciso. Um dia de diferença entre a venda e o recebimento também desloca valores entre meses.";
+
+    // Recomendacao por modalidade
+    var rec = [
+      ["Pix", "Pix direto na chave (sem maquininha)", "0% — sempre que der, cobrar por Pix na chave. Na maquininha (Ton/PagBank) o Pix custa 0,99%."],
+      ["Débito na maquininha", "Mercado Pago — 0,99%", "Hoje paga 1,45% (Visa/MC) e 2,64% (Elo) na Ton. Confirmar a taxa do Mercado Pago para Elo/Amex."],
+      ["Débito pelo celular", "PagBank Tap On — 0,88%", "Mais barato de todos, mas exige usar o celular como maquininha e mais uma conta para conciliar."],
+      ["Crédito à vista", "Mercado Pago — 3,05%", "Hoje paga 3,51% na Ton. PagBank Tap On (3,14%) também é mais barato que a Ton."],
+      ["Crédito 2x a 4x", "Mercado Pago — 4,40% a 6,10%", "Ton cobra 6,99% a 7,99% (Visa/MC). Pouco usado na Santa Patinha, mas a diferença por venda é grande."],
+      ["Crédito 5x a 18x", "Inconclusivo", "Ton não informou; PagBank depende de como entra o acréscimo de 2,99% ao mês."],
+      ["Recebimento do dinheiro", "Mercado Pago / PagBank — na hora", "Ton: próximo dia útil. Receber na hora ajuda o caixa, mas o ganho real é pequeno com o volume atual."],
+    ];
+    document.getElementById("taxas-recomendacao").innerHTML =
+      "<thead><tr><th class=\"col-label\">Modalidade</th><th>Compensa mais</th><th>Por quê / observação</th></tr></thead><tbody>" +
+      rec.map(function (r) { return "<tr><td class=\"col-label\">" + r[0] + "</td><td><b>" + r[1] + "</b></td><td class=\"wrap\">" + r[2] + "</td></tr>"; }).join("") + "</tbody>";
+
+    // Checklist
+    var chk = [
+      "<b>Mercado Pago:</b> qual é o faturamento mínimo da proposta e em que condição as taxas podem ser reajustadas; taxa de débito e crédito para <b>Elo e Amex</b>; custo (compra ou aluguel) da maquininha Point.",
+      "<b>PagBank:</b> como funciona o acréscimo de <b>2,99% ao mês</b> no parcelado (por parcela? sobre o total?) e qual o custo final de 2x a 4x; prazo do crédito digitado (30 dias).",
+      "<b>Ton:</b> pedir a tabela completa (5x a 18x) e usar a proposta do Mercado Pago para <b>negociar</b> — se a Ton baixar para perto de 3,05% / 0,99%, dá para economizar sem trocar de maquininha.",
+      "<b>Operação:</b> usar mais de uma maquininha divide o dinheiro em contas diferentes e dá mais trabalho para conciliar; o Pix direto na chave continua sendo o mais barato.",
+      "<b>App:</b> registrar a forma de pagamento correta em toda venda (cartão, Pix, dinheiro) — hoje o extrato mostra mais vendas no cartão do que o App.",
+      "<b>Antes de decidir:</b> refazer esta simulação com 2–3 meses de volume real (esta aba se atualiza sozinha a cada mês) e com as taxas confirmadas por escrito.",
+    ];
+    document.getElementById("taxas-checklist").innerHTML = chk.map(function (c) { return "<li>" + c + "</li>"; }).join("");
+  };
+  window.addEventListener("resize", function () {
+    var el = document.getElementById("taxas-chart"), v = document.getElementById("view-taxas");
+    if (el && v && !v.classList.contains("hidden") && echarts.getInstanceByDom(el)) echarts.getInstanceByDom(el).resize();
+  });
 
   function render() {
     var fromIdx = parseInt(rangeFromEl.value, 10);
